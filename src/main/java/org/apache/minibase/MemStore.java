@@ -1,9 +1,10 @@
 package org.apache.minibase;
 
-import org.apache.log4j.Logger;
 import org.apache.minibase.DiskStore.MultiIter;
 import org.apache.minibase.MStore.SeekIter;
 import org.apache.minibase.MiniBase.Flusher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -20,7 +21,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class MemStore implements Closeable {
 
-  private static final Logger LOG = Logger.getLogger(MemStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(MemStore.class);
 
   private final AtomicLong dataSize = new AtomicLong();
 

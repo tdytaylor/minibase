@@ -29,7 +29,7 @@ public class DiskFile implements Closeable {
 
   private String fname;
   private RandomAccessFile in;
-  private SortedSet<BlockMeta> blockMetaSet = new TreeSet<>();
+  private final SortedSet<BlockMeta> blockMetaSet = new TreeSet<>();
 
   private long fileSize;
   private int blockCount;

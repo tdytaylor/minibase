@@ -1,8 +1,8 @@
 package org.apache.minibase;
 
 public class BloomFilter {
-  private int k;
-  private int bitsPerKey;
+  private final int k;
+  private final int bitsPerKey;
   private int bitLen;
   private byte[] result;
 
@@ -14,12 +14,13 @@ public class BloomFilter {
   public byte[] generate(byte[][] keys) {
     assert keys != null;
     bitLen = keys.length * bitsPerKey;
-    bitLen = ((bitLen + 7) / 8) << 3; // align the bitLen.
-    bitLen = bitLen < 64 ? 64 : bitLen;
+    // align the bitLen.
+    bitLen = ((bitLen + 7) / 8) << 3;
+    bitLen = Math.max(bitLen, 64);
     result = new byte[bitLen >> 3];
-    for (int i = 0; i < keys.length; i++) {
-      assert keys[i] != null;
-      int h = Bytes.hash(keys[i]);
+    for (byte[] key : keys) {
+      assert key != null;
+      int h = Bytes.hash(key);
       for (int t = 0; t < k; t++) {
         int idx = (h % bitLen + bitLen) % bitLen;
         result[idx / 8] |= (1 << (idx % 8));

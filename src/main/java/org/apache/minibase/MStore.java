@@ -185,4 +185,28 @@ public class MStore implements MiniBase {
      */
     void seekTo(KeyValue kv) throws IOException;
   }
+
+  public ExecutorService getPool() {
+    return pool;
+  }
+
+  public MemStore getMemStore() {
+    return memStore;
+  }
+
+  public DiskStore getDiskStore() {
+    return diskStore;
+  }
+
+  public Compactor getCompactor() {
+    return compactor;
+  }
+
+  public AtomicLong getSequenceId() {
+    return sequenceId;
+  }
+
+  public Config getConf() {
+    return conf;
+  }
 }

@@ -1,11 +1,12 @@
 package org.apache.minibase;
 
-import org.apache.log4j.Logger;
 import org.apache.minibase.DiskFile.DiskFileWriter;
 import org.apache.minibase.MStore.SeekIter;
 import org.apache.minibase.MiniBase.Compactor;
 import org.apache.minibase.MiniBase.Flusher;
 import org.apache.minibase.MiniBase.Iter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
 import java.io.File;
@@ -14,21 +15,23 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class DiskStore implements Closeable {
 
-  private static final Logger LOG = Logger.getLogger(DiskStore.class);
+  private static final Logger LOG = LoggerFactory.getLogger(DiskStore.class);
+
   private static final String FILE_NAME_TMP_SUFFIX = ".tmp";
   private static final String FILE_NAME_ARCHIVE_SUFFIX = ".archive";
   private static final Pattern DATA_FILE_RE = Pattern.compile("data\\.([0-9]+)"); // data.1
 
-  private String dataDir;
-  private List<DiskFile> diskFiles;
+  private final String dataDir;
+  private final List<DiskFile> diskFiles;
+  private final int maxDiskFiles;
 
-  private int maxDiskFiles;
   private volatile AtomicLong maxFileId;
 
   public DiskStore(String dataDir, int maxDiskFiles) {
@@ -117,21 +120,21 @@ public class DiskStore implements Closeable {
   }
 
   public SeekIter<KeyValue> createIterator(List<DiskFile> diskFiles) throws IOException {
-    List<SeekIter<KeyValue>> iters = new ArrayList<>();
-    diskFiles.forEach(df -> iters.add(df.iterator()));
-    return new MultiIter(iters);
+    List<SeekIter<KeyValue>> seekIters = new ArrayList<>();
+    diskFiles.forEach(df -> seekIters.add(df.iterator()));
+    return new MultiIter(seekIters);
   }
 
   public SeekIter<KeyValue> createIterator() throws IOException {
     return createIterator(getDiskFiles());
   }
 
-  public static class DefaultFlusher implements Flusher {
-    private DiskStore diskStore;
-
-    public DefaultFlusher(DiskStore diskStore) {
-      this.diskStore = diskStore;
-    }
+  /**
+   * 默认的刷盘策略
+   *
+   * @param diskStore
+   */
+  public record DefaultFlusher(DiskStore diskStore) implements Flusher {
 
     @Override
     public void flush(Iter<KeyValue> it) throws IOException {
@@ -147,8 +150,7 @@ public class DiskStore implements Closeable {
         }
         File f = new File(fileTempName);
         if (!f.renameTo(new File(fileName))) {
-          throw new IOException(
-              "Rename " + fileTempName + " to " + fileName + " failed when flushing");
+          throw new IOException("Rename " + fileTempName + " to " + fileName + " failed when flushing");
         }
         // TODO any concurrent issue ?
         diskStore.addDiskFile(fileName);
@@ -162,7 +164,7 @@ public class DiskStore implements Closeable {
   }
 
   public static class DefaultCompactor extends Compactor {
-    private DiskStore diskStore;
+    private final DiskStore diskStore;
     private volatile boolean running = true;
 
     public DefaultCompactor(DiskStore diskStore) {
@@ -210,11 +212,11 @@ public class DiskStore implements Closeable {
 
     @Override
     public void compact() throws IOException {
-      List<DiskFile> filesToCompact = new ArrayList<>();
-      filesToCompact.addAll(diskStore.getDiskFiles());
+      List<DiskFile> filesToCompact = new ArrayList<>(diskStore.getDiskFiles());
       performCompact(filesToCompact);
     }
 
+    @Override
     public void run() {
       while (running) {
         try {
@@ -224,7 +226,7 @@ public class DiskStore implements Closeable {
             isCompacted = true;
           }
           if (!isCompacted) {
-            Thread.sleep(1000);
+            TimeUnit.MILLISECONDS.sleep(1000);
           }
         } catch (IOException e) {
           e.printStackTrace();
@@ -243,7 +245,7 @@ public class DiskStore implements Closeable {
 
   public static class MultiIter implements SeekIter<KeyValue> {
 
-    private class IterNode {
+    private static class IterNode {
       KeyValue kv;
       SeekIter<KeyValue> iter;
 
@@ -253,16 +255,16 @@ public class DiskStore implements Closeable {
       }
     }
 
-    private SeekIter<KeyValue> iters[];
-    private PriorityQueue<IterNode> queue;
+    private final SeekIter<KeyValue>[] iters;
+    private final PriorityQueue<IterNode> queue;
 
-    public MultiIter(SeekIter<KeyValue> iters[]) throws IOException {
+    public MultiIter(SeekIter<KeyValue>[] iters) throws IOException {
       assert iters != null;
       this.iters = iters; // Used for seekTo
       this.queue = new PriorityQueue<>(((o1, o2) -> o1.kv.compareTo(o2.kv)));
-      for (int i = 0; i < iters.length; i++) {
-        if (iters[i] != null && iters[i].hasNext()) {
-          queue.add(new IterNode(iters[i].next(), iters[i]));
+      for (SeekIter<KeyValue> iter : iters) {
+        if (iter != null && iter.hasNext()) {
+          queue.add(new IterNode(iter.next(), iter));
         }
       }
     }
